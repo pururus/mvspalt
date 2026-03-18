@@ -563,3 +563,68 @@ class ModelWrapper(LightningModule):
                 "frequency": 1,
             },
         }
+        
+class MVSplat(nn.Module):
+    logger: Optional[WandbLogger]
+    encoder: nn.Module
+    encoder_visualizer: Optional[EncoderVisualizer]
+    decoder: Decoder
+    losses: nn.ModuleList
+
+    def __init__(
+        self,
+        encoder: Encoder,
+        encoder_visualizer: Optional[EncoderVisualizer],
+        decoder: Decoder,
+        losses: nn.ModuleList,
+        need_save_image=True,
+        output_path: str="/workspace/generateg"
+    ) -> None:
+        super().__init__()
+
+        self.encoder = encoder
+        self.encoder_visualizer = encoder_visualizer
+        self.decoder = decoder
+        self.data_shim = get_data_shim(self.encoder)
+        self.losses = nn.ModuleList(losses)
+        self.global_step=0
+        self.save_image=need_save_image
+        self.save_video=False
+        self.output_path
+    
+    def forward(self, batch, batch_idx):
+        batch: BatchedExample = self.data_shim(batch)
+        b, v, _, h, w = batch["target"]["image"].shape
+        assert b == 1
+
+        gaussians = self.encoder(
+                batch["context"],
+                self.global_step,
+                deterministic=False,
+            )
+        output = self.decoder.forward(
+                gaussians,
+                batch["target"]["extrinsics"],
+                batch["target"]["intrinsics"],
+                batch["target"]["near"],
+                batch["target"]["far"],
+                (h, w),
+                depth_mode=None,
+            )
+
+        (scene,) = batch["scene"]
+        name = "scene_001"
+        path = self.output_path / name
+        images_prob = output.color[0]
+
+        if self.save_image:
+            for index, color in zip(batch["target"]["index"][0], images_prob):
+                save_image(color, path / scene / f"color/{index:0>6}.png")
+
+        if self.save_video:
+            frame_str = "_".join([str(x.item()) for x in batch["context"]["index"][0]])
+            save_video(
+                [a for a in images_prob],
+                path / "video" / f"{scene}_frame_{frame_str}.mp4",
+            )
+        return images_prob

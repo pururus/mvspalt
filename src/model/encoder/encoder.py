@@ -12,9 +12,8 @@ T = TypeVar("T")
 class Encoder(nn.Module, ABC, Generic[T]):
     cfg: T
 
-    def __init__(self, cfg: T) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.cfg = cfg
 
     @abstractmethod
     def forward(

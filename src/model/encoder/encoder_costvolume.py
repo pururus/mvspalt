@@ -65,28 +65,48 @@ class EncoderCostVolume(Encoder[EncoderCostVolumeCfg]):
     depth_predictor:  DepthPredictorMultiView
     gaussian_adapter: GaussianAdapter
 
-    def __init__(self, cfg: EncoderCostVolumeCfg) -> None:
-        super().__init__(cfg)
+    def __init__(self, 
+                 use_epipolar_trans=False, 
+                 num_views=2,
+                 d_feature=128,
+                 downscale_factor=4,
+                 wo_backbone_cross_attn=False,
+                 unimatch_weights_path="/workspace/checkpoints/gmdepth-scale1-resumeflowthings-scannet-5d9d7964.pth",
+                 num_depth_candidates=32,
+                 costvolume_unet_feat_dim=128,
+                 costvolume_unet_channel_mult=[1,1,1],
+                 costvolume_unet_attn_res=[],
+                 num_surfaces=1,
+                 gaussians_per_pixel=1,
+                 depth_unet_feat_dim=64,
+                 depth_unet_attn_res=[],
+                 depth_unet_channel_mult=[1, 1, 1],
+                 wo_depth_refine=False,
+                 wo_cost_volume=False,
+                 wo_cost_volume_refine=False,
+                 mode='test'
+                 ) -> None:
+        super().__init__()
 
-        # multi-view Transformer backbone
-        if cfg.use_epipolar_trans:
+        if use_epipolar_trans:
             self.epipolar_sampler = EpipolarSampler(
-                num_views=get_cfg().dataset.view_sampler.num_context_views,
+                num_views=num_views,
                 num_samples=32,
             )
             self.depth_encoding = nn.Sequential(
                 (pe := PositionalEncoding(10)),
-                nn.Linear(pe.d_out(1), cfg.d_feature),
+                nn.Linear(pe.d_out(1), d_feature),
             )
+            
         self.backbone = BackboneMultiview(
-            feature_channels=cfg.d_feature,
-            downscale_factor=cfg.downscale_factor,
-            no_cross_attn=cfg.wo_backbone_cross_attn,
-            use_epipolar_trans=cfg.use_epipolar_trans,
+            feature_channels=d_feature,
+            downscale_factor=downscale_factor,
+            no_cross_attn=wo_backbone_cross_attn,
+            use_epipolar_trans=use_epipolar_trans,
         )
-        ckpt_path = cfg.unimatch_weights_path
-        if get_cfg().mode == 'train':
-            if cfg.unimatch_weights_path is None:
+        ckpt_path = unimatch_weights_path
+        if mode == 'train':
+            if unimatch_weights_path is None:
                 print("==> Init multi-view transformer backbone from scratch")
             else:
                 print("==> Load multi-view transformer backbone checkpoint: %s" % ckpt_path)
@@ -99,29 +119,29 @@ class EncoderCostVolume(Encoder[EncoderCostVolumeCfg]):
                     }
                 )
                 # NOTE: when wo cross attn, we added ffns into self-attn, but they have no pretrained weight
-                is_strict_loading = not cfg.wo_backbone_cross_attn
+                is_strict_loading = not wo_backbone_cross_attn
                 self.backbone.load_state_dict(updated_state_dict, strict=is_strict_loading)
 
         # gaussians convertor
-        self.gaussian_adapter = GaussianAdapter(cfg.gaussian_adapter)
+        self.gaussian_adapter = GaussianAdapter(gaussian_scale_min = 0.5, gaussian_scale_max = 15.0, sh_degree = 4)
 
         # cost volume based depth predictor
         self.depth_predictor = DepthPredictorMultiView(
-            feature_channels=cfg.d_feature,
-            upscale_factor=cfg.downscale_factor,
-            num_depth_candidates=cfg.num_depth_candidates,
-            costvolume_unet_feat_dim=cfg.costvolume_unet_feat_dim,
-            costvolume_unet_channel_mult=tuple(cfg.costvolume_unet_channel_mult),
-            costvolume_unet_attn_res=tuple(cfg.costvolume_unet_attn_res),
-            gaussian_raw_channels=cfg.num_surfaces * (self.gaussian_adapter.d_in + 2),
-            gaussians_per_pixel=cfg.gaussians_per_pixel,
-            num_views=get_cfg().dataset.view_sampler.num_context_views,
-            depth_unet_feat_dim=cfg.depth_unet_feat_dim,
-            depth_unet_attn_res=cfg.depth_unet_attn_res,
-            depth_unet_channel_mult=cfg.depth_unet_channel_mult,
-            wo_depth_refine=cfg.wo_depth_refine,
-            wo_cost_volume=cfg.wo_cost_volume,
-            wo_cost_volume_refine=cfg.wo_cost_volume_refine,
+            feature_channels=d_feature,
+            upscale_factor=downscale_factor,
+            num_depth_candidates=num_depth_candidates,
+            costvolume_unet_feat_dim=costvolume_unet_feat_dim,
+            costvolume_unet_channel_mult=tuple(costvolume_unet_channel_mult),
+            costvolume_unet_attn_res=tuple(costvolume_unet_attn_res),
+            gaussian_raw_channels=num_surfaces * (self.gaussian_adapter.d_in + 2),
+            gaussians_per_pixel=gaussians_per_pixel,
+            num_views=num_views,
+            depth_unet_feat_dim=depth_unet_feat_dim,
+            depth_unet_attn_res=depth_unet_attn_res,
+            depth_unet_channel_mult=depth_unet_channel_mult,
+            wo_depth_refine=wo_depth_refine,
+            wo_cost_volume=wo_cost_volume,
+            wo_cost_volume_refine=wo_cost_volume_refine,
         )
 
     def map_pdf_to_opacity(

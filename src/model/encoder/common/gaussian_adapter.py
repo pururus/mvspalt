@@ -30,10 +30,14 @@ class GaussianAdapterCfg:
 class GaussianAdapter(nn.Module):
     cfg: GaussianAdapterCfg
 
-    def __init__(self, cfg: GaussianAdapterCfg):
+    def __init__(self,
+                 gaussian_scale_min = 0.5, 
+                 gaussian_scale_max = 15.0, 
+                 sh_degree = 4):
         super().__init__()
-        self.cfg = cfg
-
+        self.sh_degree = sh_degree
+        self.gaussian_scale_min = gaussian_scale_min
+        self.gaussian_scale_max = gaussian_scale_max
         # Create a mask for the spherical harmonics coefficients. This ensures that at
         # initialization, the coefficients are biased towards having a large DC
         # component and small view-dependent components.
@@ -42,7 +46,7 @@ class GaussianAdapter(nn.Module):
             torch.ones((self.d_sh,), dtype=torch.float32),
             persistent=False,
         )
-        for degree in range(1, self.cfg.sh_degree + 1):
+        for degree in range(1, sh_degree + 1):
             self.sh_mask[degree**2 : (degree + 1) ** 2] = 0.1 * 0.25**degree
 
     def forward(
@@ -60,8 +64,8 @@ class GaussianAdapter(nn.Module):
         scales, rotations, sh = raw_gaussians.split((3, 4, 3 * self.d_sh), dim=-1)
 
         # Map scale features to valid scale range.
-        scale_min = self.cfg.gaussian_scale_min
-        scale_max = self.cfg.gaussian_scale_max
+        scale_min = self.gaussian_scale_min
+        scale_max = self.gaussian_scale_max
         scales = scale_min + (scale_max - scale_min) * scales.sigmoid()
         h, w = image_shape
         pixel_size = 1 / torch.tensor((w, h), dtype=torch.float32, device=device)
@@ -110,7 +114,7 @@ class GaussianAdapter(nn.Module):
 
     @property
     def d_sh(self) -> int:
-        return (self.cfg.sh_degree + 1) ** 2
+        return (self.sh_degree + 1) ** 2
 
     @property
     def d_in(self) -> int:
