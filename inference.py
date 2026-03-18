@@ -34,6 +34,7 @@ with install_import_hook(
     from src.dataset.types import BatchedExample, BatchedViews
     
 def load_images(images_path):
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     images_path = Path(images_path)
     with open(images_path / 'metadata.json', 'r') as f:
         metadata = json.load(f)
@@ -46,8 +47,8 @@ def load_images(images_path):
         img_tensor = tf.Resize((256, 256))(img_tensor)
         images.append(img_tensor)
     
-    images = torch.stack(images)
-    target_images = torch.zeros((len(metadata['extrinsics']) - 2, images.shape[1], images.shape[2], images.shape[3]))
+    images = torch.stack(images).to(device)
+    target_images = torch.zeros((len(metadata['extrinsics']) - 2, images.shape[1], images.shape[2], images.shape[3])).to(device)
     
     extrinsics_list = []
     for ext in metadata['extrinsics']:
@@ -66,7 +67,7 @@ def load_images(images_path):
     target_context_views_tensor = torch.tensor([range(2, len(extrinsics_list))])
     
     src_example: BatchedViews = {
-        "extrinsics": extrinsics.unsqueeze(0) ,
+        "extrinsics": extrinsics.unsqueeze(0).inverse() ,
         "intrinsics": intrinsics.unsqueeze(0) ,
         "image": images.unsqueeze(0) ,
         "near": torch.ones((1, 2)),
@@ -75,7 +76,7 @@ def load_images(images_path):
     }
     
     tgt_example: BatchedViews = {
-        "extrinsics": target_extrinsics.unsqueeze(0) ,
+        "extrinsics": target_extrinsics.unsqueeze(0).inverse() ,
         "intrinsics": target_intrinsics.unsqueeze(0) ,
         "image": target_images.unsqueeze(0) ,
         "near": torch.ones((1, 2)),
@@ -103,7 +104,7 @@ def load_model(ckpt_path):
 
 if __name__ == "__main__":
     print("Loading model")
-    load_model("/workspace/checkpoints/re10k.ckpt")
+    model = load_model("/workspace/checkpoints/re10k.ckpt")
     print("Loaded")
     
     print("Loading images")
@@ -111,4 +112,4 @@ if __name__ == "__main__":
     
     data = load_images(images_dir)
     print("Loaded images")
-    
+    output = model(data)
