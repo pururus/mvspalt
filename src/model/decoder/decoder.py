@@ -26,13 +26,9 @@ T = TypeVar("T")
 
 
 class Decoder(nn.Module, ABC, Generic[T]):
-    cfg: T
-    dataset_cfg: DatasetCfg
 
-    def __init__(self, cfg: T, dataset_cfg: DatasetCfg) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self.cfg = cfg
-        self.dataset_cfg = dataset_cfg
 
     @abstractmethod
     def forward(

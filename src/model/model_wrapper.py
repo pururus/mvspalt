@@ -590,7 +590,7 @@ class MVSplat(nn.Module):
         self.global_step=0
         self.save_image=need_save_image
         self.save_video=False
-        self.output_path
+        self.output_path = Path(output_path)
     
     def forward(self, batch, batch_idx):
         batch: BatchedExample = self.data_shim(batch)
@@ -602,6 +602,7 @@ class MVSplat(nn.Module):
                 self.global_step,
                 deterministic=False,
             )
+        
         output = self.decoder.forward(
                 gaussians,
                 batch["target"]["extrinsics"],
